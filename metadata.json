@@ -1,0 +1,5 @@
+{
+  "name": "PipeRAG",
+  "description": "Standardized, modular RAG workflow builder for enterprise knowledge retrieval.",
+  "requestFramePermissions": []
+}
