@@ -1,7 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
-// We will simulate a RAG retrieval by providing a hardcoded context 
-// derived from the business plan to the model.
 const MOCK_KNOWLEDGE_BASE = `
 PipeRAG is a B2B SaaS platform that productizes Retrieval-Augmented Generation (RAG) as a reusable workflow template.
 Tagline: "RAG workflows, standardized."
@@ -14,39 +10,56 @@ Pricing: Subscription (per tenant) + usage-based (queries + volume).
 Security: ACL propagation, retrieval-time trimming, audit logs.
 `;
 
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+
+const fallbackLocalResponse = (query: string): string => {
+  const normalizedQuery = query.toLowerCase();
+  const lines = MOCK_KNOWLEDGE_BASE
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const matchedLine = lines.find((line) =>
+    normalizedQuery
+      .split(/\s+/)
+      .filter((token) => token.length > 3)
+      .some((token) => line.toLowerCase().includes(token))
+  );
+
+  if (matchedLine) {
+    return `${matchedLine}\n\n(Source: local demo knowledge base)`;
+  }
+
+  return "I don't have that information in the PipeRAG knowledge base.";
+};
+
 export const generateRAGResponse = async (query: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    return "Error: API Key not found. Please set the API_KEY environment variable to test the live demo.";
+  if (!API_BASE_URL) {
+    return fallbackLocalResponse(query);
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    // We are simulating the "Assemble Prompt" node here
-    const prompt = `
-    You are the AI engine for PipeRAG. 
-    Use the following RETRIEVED CONTEXT to answer the user's question.
-    
-    --- CONTEXT START ---
-    ${MOCK_KNOWLEDGE_BASE}
-    --- CONTEXT END ---
-
-    User Question: ${query}
-
-    Rules:
-    1. Answer strictly based on the context provided.
-    2. If the answer is not in the context, say "I don't have that information in the PipeRAG knowledge base."
-    3. Keep the tone professional and technical.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-latest',
-      contents: prompt,
+    const response = await fetch(`${API_BASE_URL}/api/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
     });
 
-    return response.text || "No response generated.";
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
+
+    const payload = (await response.json()) as { answer?: string };
+
+    if (!payload.answer) {
+      return 'No response generated.';
+    }
+
+    return payload.answer;
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "An error occurred while communicating with the AI model. Please try again.";
+    console.error('API Error:', error);
+    return fallbackLocalResponse(query);
   }
 };
